@@ -29,15 +29,6 @@ const (
 	tkMacdef
 )
 
-var tokenNames = []string{
-	"Machine",
-	"Default",
-	"Login",
-	"Password",
-	"Account",
-	"Macdef",
-}
-
 var keywords = map[string]int{
 	"machine":  tkMachine,
 	"default":  tkDefault,
