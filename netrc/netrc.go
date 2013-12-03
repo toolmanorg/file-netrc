@@ -10,6 +10,7 @@
 package netrc
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -72,31 +73,13 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s:%d: %s", e.Filename, e.LineNum, e.Msg)
 }
 
-func getWord(b []byte, pos *filePos) (string, []byte) {
-	// Skip over leading whitespace
-	i := 0
-	for i < len(b) {
-		r, size := utf8.DecodeRune(b[i:])
-		if r == '\n' {
-			pos.line++
-		}
-		if !unicode.IsSpace(r) {
-			break
-		}
-		i += size
-	}
-	b = b[i:]
-
-	// Find end of word
-	i = bytes.IndexFunc(b, unicode.IsSpace)
-	if i < 0 {
-		i = len(b)
-	}
-	return string(b[0:i]), b[i:]
-}
-
 func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
-	word, b := getWord(b, pos)
+	adv, wordb, err := bufio.ScanWords(b, true)
+	if err != nil {
+		return b, nil, err // should never happen
+	}
+	b = b[adv:]
+	word := string(wordb)
 	if word == "" {
 		return b, nil, nil // EOF reached
 	}
@@ -111,18 +94,28 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 		return b, t, nil
 	}
 
-	word, b = getWord(b, pos)
 	if word == "" {
 		return b, nil, &Error{pos.name, pos.line, "word expected"}
 	}
 	if t.kind == tkMacdef {
+		adv, lineb, err := bufio.ScanLines(b, true)
+		if err != nil {
+			return b, nil, err // should never happen
+		}
+		b = b[adv:]
+		adv, wordb, err = bufio.ScanWords(lineb, true)
+		if err != nil {
+			return b, nil, err // should never happen
+		}
+		word = string(wordb)
 		t.macroName = word
+		lineb = lineb[adv:]
 
 		// Macro value starts on next line. The rest of current line
 		// should contain nothing but whitespace
 		i := 0
-		for i < len(b) {
-			r, size := utf8.DecodeRune(b[i:])
+		for i < len(lineb) {
+			r, size := utf8.DecodeRune(lineb[i:])
 			if r == '\n' {
 				i += size
 				pos.line++
@@ -133,7 +126,6 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 			}
 			i += size
 		}
-		b = b[i:]
 
 		// Find end of macro value
 		i = bytes.Index(b, []byte("\n\n"))
@@ -143,6 +135,13 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 		t.value = string(b[0:i])
 
 		return b[i:], t, nil
+	} else {
+		adv, wordb, err = bufio.ScanWords(b, true)
+		if err != nil {
+			return b, nil, err // should never happen
+		}
+		word = string(wordb)
+		b = b[adv:]
 	}
 	t.value = word
 	return b, t, nil
