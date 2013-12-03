@@ -28,6 +28,7 @@ const (
 	tkPassword
 	tkAccount
 	tkMacdef
+	tkComment
 )
 
 var keywords = map[string]int{
@@ -37,6 +38,7 @@ var keywords = map[string]int{
 	"password": tkPassword,
 	"account":  tkAccount,
 	"macdef":   tkMacdef,
+	"#":        tkComment,
 }
 
 // Machine contains information about a remote machine.
@@ -92,6 +94,15 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 	}
 	if t.kind == tkDefault {
 		return b, t, nil
+	}
+	if t.kind == tkComment {
+		t.value = word + " "
+		adv, wordb, err = bufio.ScanLines(b, true)
+		if err != nil {
+			return b, nil, err // should never happen
+		}
+		t.value = t.value + string(wordb)
+		return b[adv:], t, nil
 	}
 
 	if word == "" {
