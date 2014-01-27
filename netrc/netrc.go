@@ -58,24 +58,18 @@ type token struct {
 	value     string
 }
 
-type filePos struct {
-	name string
-	line int
-}
-
 // Error represents a netrc file parse error.
 type Error struct {
-	Filename string
-	LineNum  int    // Line number
-	Msg      string // Error message
+	LineNum int    // Line number
+	Msg     string // Error message
 }
 
 // Error returns a string representation of error e.
 func (e *Error) Error() string {
-	return fmt.Sprintf("%s:%d: %s", e.Filename, e.LineNum, e.Msg)
+	return fmt.Sprintf("line %d: %s", e.LineNum, e.Msg)
 }
 
-func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
+func getToken(b []byte, pos int) ([]byte, *token, error) {
 	adv, wordb, err := bufio.ScanWords(b, true)
 	if err != nil {
 		return b, nil, err // should never happen
@@ -90,7 +84,7 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 	var ok bool
 	t.kind, ok = keywords[word]
 	if !ok {
-		return b, nil, &Error{pos.name, pos.line, "keyword expected; got " + word}
+		return b, nil, &Error{pos, "keyword expected; got " + word}
 	}
 	if t.kind == tkDefault {
 		return b, t, nil
@@ -106,7 +100,7 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 	}
 
 	if word == "" {
-		return b, nil, &Error{pos.name, pos.line, "word expected"}
+		return b, nil, &Error{pos, "word expected"}
 	}
 	if t.kind == tkMacdef {
 		adv, lineb, err := bufio.ScanLines(b, true)
@@ -129,11 +123,11 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 			r, size := utf8.DecodeRune(lineb[i:])
 			if r == '\n' {
 				i += size
-				pos.line++
+				pos++
 				break
 			}
 			if !unicode.IsSpace(r) {
-				return b, nil, &Error{pos.name, pos.line, "unexpected word"}
+				return b, nil, &Error{pos, "unexpected word"}
 			}
 			i += size
 		}
@@ -158,7 +152,7 @@ func getToken(b []byte, pos *filePos) ([]byte, *token, error) {
 	return b, t, nil
 }
 
-func parse(r io.Reader, pos *filePos) ([]*Machine, Macros, error) {
+func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 	// TODO(fhs): Clear memory containing password.
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -183,7 +177,7 @@ func parse(r io.Reader, pos *filePos) ([]*Machine, Macros, error) {
 			mac[t.macroName] = t.value
 		case tkDefault:
 			if defaultSeen {
-				return nil, nil, &Error{pos.name, pos.line, "multiple default token"}
+				return nil, nil, &Error{pos, "multiple default token"}
 			}
 			if m != nil {
 				mach, m = append(mach, m), nil
@@ -199,17 +193,17 @@ func parse(r io.Reader, pos *filePos) ([]*Machine, Macros, error) {
 			m.Name = t.value
 		case tkLogin:
 			if m == nil || m.Login != "" {
-				return nil, nil, &Error{pos.name, pos.line, "unexpected token login "}
+				return nil, nil, &Error{pos, "unexpected token login "}
 			}
 			m.Login = t.value
 		case tkPassword:
 			if m == nil || m.Password != "" {
-				return nil, nil, &Error{pos.name, pos.line, "unexpected token password"}
+				return nil, nil, &Error{pos, "unexpected token password"}
 			}
 			m.Password = t.value
 		case tkAccount:
 			if m == nil || m.Account != "" {
-				return nil, nil, &Error{pos.name, pos.line, "unexpected token account"}
+				return nil, nil, &Error{pos, "unexpected token account"}
 			}
 			m.Account = t.value
 		}
@@ -233,7 +227,7 @@ func ParseFile(filename string) ([]*Machine, Macros, error) {
 		return nil, nil, err
 	}
 	defer fd.Close()
-	return parse(fd, &filePos{filename, 1})
+	return parse(fd, 1)
 }
 
 // FindMachine parses the netrc file identified by filename and returns
