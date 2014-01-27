@@ -214,12 +214,8 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 	return mach, mac, nil
 }
 
-// ParseFile parses the netrc file identified by filename and returns the set of
-// machine information and macros defined in it. The ``default'' machine,
-// which is intended to be used when no machine name matches, is identified
-// by an empty machine name. There can be only one ``default'' machine.
-//
-// If there is a parsing error, an Error is returned.
+// ParseFile opens the file at filename and then passes its io.Reader to
+// Parse().
 func ParseFile(filename string) ([]*Machine, Macros, error) {
 	// TODO(fhs): Check if file is readable by anyone besides the user if there is password in it.
 	fd, err := os.Open(filename)
@@ -227,7 +223,17 @@ func ParseFile(filename string) ([]*Machine, Macros, error) {
 		return nil, nil, err
 	}
 	defer fd.Close()
-	return parse(fd, 1)
+	return Parse(fd)
+}
+
+// Parse parses from the the Reader r as a netrc file and returns the set of
+// machine information and macros defined in it. The ``default'' machine,
+// which is intended to be used when no machine name matches, is identified
+// by an empty machine name. There can be only one ``default'' machine.
+//
+// If there is a parsing error, an Error is returned.
+func Parse(r io.Reader) ([]*Machine, Macros, error) {
+	return parse(r, 1)
 }
 
 // FindMachine parses the netrc file identified by filename and returns

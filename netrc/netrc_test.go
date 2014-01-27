@@ -4,42 +4,65 @@
 package netrc
 
 import (
+	"bytes"
+	"io"
+	"io/ioutil"
 	"testing"
 )
 
-var expectedMach = []*Machine{
+var expectedMachines = []*Machine{
 	&Machine{"mail.google.com", "joe@gmail.com", "somethingSecret", "gmail"},
 	&Machine{"ray", "demo", "mypassword", ""},
 	&Machine{"", "anonymous", "joe@example.com", ""},
 }
-var expectedMac = Macros{
+var expectedMacros = Macros{
 	"allput": "put src/*",
 }
 
-func eqMach(a *Machine, b *Machine) bool {
+func eqMachine(a *Machine, b *Machine) bool {
 	return a.Name == b.Name &&
 		a.Login == b.Login &&
 		a.Password == b.Password &&
 		a.Account == b.Account
 }
 
-func TestParse(t *testing.T) {
-	mach, mac, err := ParseFile("example.netrc")
+func testExpected(machines []*Machine, macros Macros, t *testing.T) {
+	for i, e := range expectedMachines {
+		if !eqMachine(e, machines[i]) {
+			t.Errorf("bad machine; expected %v, got %v\n", e, machines[i])
+		}
+	}
+
+	for k, v := range expectedMacros {
+		if v != macros[k] {
+			t.Errorf("bad macro for %s; expected %s, got %s\n", k, v, macros[k])
+		}
+	}
+}
+
+func netrcReader(filename string, t *testing.T) io.Reader {
+	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return bytes.NewReader(b)
+}
 
-	for i, e := range expectedMach {
-		if !eqMach(e, mach[i]) {
-			t.Errorf("bad machine; expected %v, got %v\n", e, mach[i])
-		}
+func TestParse(t *testing.T) {
+	r := netrcReader("example.netrc", t)
+	machines, macros, err := Parse(r)
+	if err != nil {
+		t.Fatal(err)
 	}
+	testExpected(machines, macros, t)
+}
 
-	for k, v := range expectedMac {
-		if v != mac[k] {
-			t.Errorf("bad macro for %s; expected %s, got %s\n", k, v, mac[k])
-		}
+func TestParseFile(t *testing.T) {
+	machines, macros, err := ParseFile("example.netrc")
+	if err != nil {
+		t.Fatal(err)
 	}
+	testExpected(machines, macros, t)
 }
 
 func TestFindMachine(t *testing.T) {
@@ -47,15 +70,15 @@ func TestFindMachine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !eqMach(m, expectedMach[1]) {
-		t.Errorf("bad machine; expected %v, got %v\n", expectedMach[1], m)
+	if !eqMachine(m, expectedMachines[1]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
 	}
 
 	m, err = FindMachine("example.netrc", "non.existent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !eqMach(m, expectedMach[2]) {
-		t.Errorf("bad machine; expected %v, got %v\n", expectedMach[2], m)
+	if !eqMachine(m, expectedMachines[2]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[2], m)
 	}
 }
