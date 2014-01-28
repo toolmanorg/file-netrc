@@ -41,6 +41,29 @@ var keywords = map[string]int{
 	"#":        tkComment,
 }
 
+type Netrc struct {
+	pre      string
+	tokens   []*token
+	machines []*Machine
+	macros   Macros
+}
+
+func (n *Netrc) FindMachine(name string) (*Machine, error) {
+	var def *Machine
+	for _, m := range n.machines {
+		if m.Name == name {
+			return m, nil
+		}
+		if m.Name == "" {
+			def = m
+		}
+	}
+	if def == nil {
+		return nil, errors.New("no machine found")
+	}
+	return def, nil
+}
+
 // Machine contains information about a remote machine.
 type Machine struct {
 	Name     string
@@ -158,11 +181,11 @@ func getToken(b []byte, pos int) ([]byte, *token, error) {
 	return b, t, nil
 }
 
-func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
+func parse(r io.Reader, pos int) (*Netrc, error) {
 	// TODO(fhs): Clear memory containing password.
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	mach := make([]*Machine, 0, 20)
@@ -173,7 +196,7 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 	for {
 		b, t, err = getToken(b, pos)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if t == nil {
 			break
@@ -183,7 +206,7 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 			mac[t.macroName] = t.value
 		case tkDefault:
 			if defaultSeen {
-				return nil, nil, &Error{pos, "multiple default token"}
+				return nil, &Error{pos, "multiple default token"}
 			}
 			if m != nil {
 				mach, m = append(mach, m), nil
@@ -193,7 +216,7 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 			defaultSeen = true
 		case tkMachine:
 			if defaultSeen {
-				return nil, nil, &Error{pos, errBadDefaultOrder}
+				return nil, &Error{pos, errBadDefaultOrder}
 			}
 			if m != nil {
 				mach, m = append(mach, m), nil
@@ -202,17 +225,17 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 			m.Name = t.value
 		case tkLogin:
 			if m == nil || m.Login != "" {
-				return nil, nil, &Error{pos, "unexpected token login "}
+				return nil, &Error{pos, "unexpected token login "}
 			}
 			m.Login = t.value
 		case tkPassword:
 			if m == nil || m.Password != "" {
-				return nil, nil, &Error{pos, "unexpected token password"}
+				return nil, &Error{pos, "unexpected token password"}
 			}
 			m.Password = t.value
 		case tkAccount:
 			if m == nil || m.Account != "" {
-				return nil, nil, &Error{pos, "unexpected token account"}
+				return nil, &Error{pos, "unexpected token account"}
 			}
 			m.Account = t.value
 		}
@@ -220,16 +243,16 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 	if m != nil {
 		mach, m = append(mach, m), nil
 	}
-	return mach, mac, nil
+	return &Netrc{machines: mach, macros: mac}, nil
 }
 
 // ParseFile opens the file at filename and then passes its io.Reader to
 // Parse().
-func ParseFile(filename string) ([]*Machine, Macros, error) {
+func ParseFile(filename string) (*Netrc, error) {
 	// TODO(fhs): Check if file is readable by anyone besides the user if there is password in it.
 	fd, err := os.Open(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer fd.Close()
 	return Parse(fd)
@@ -241,7 +264,7 @@ func ParseFile(filename string) ([]*Machine, Macros, error) {
 // by an empty machine name. There can be only one ``default'' machine.
 //
 // If there is a parsing error, an Error is returned.
-func Parse(r io.Reader) ([]*Machine, Macros, error) {
+func Parse(r io.Reader) (*Netrc, error) {
 	return parse(r, 1)
 }
 
@@ -249,21 +272,9 @@ func Parse(r io.Reader) ([]*Machine, Macros, error) {
 // the Machine named by name. If no Machine with name name is found, the
 // ``default'' machine is returned.
 func FindMachine(filename, name string) (*Machine, error) {
-	mach, _, err := ParseFile(filename)
+	n, err := ParseFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	var def *Machine
-	for _, m := range mach {
-		if m.Name == name {
-			return m, nil
-		}
-		if m.Name == "" {
-			def = m
-		}
-	}
-	if def == nil {
-		return nil, errors.New("no machine found")
-	}
-	return def, nil
+	return n.FindMachine(name)
 }

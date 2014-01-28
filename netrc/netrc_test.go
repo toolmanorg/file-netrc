@@ -26,16 +26,16 @@ func eqMachine(a *Machine, b *Machine) bool {
 		a.Account == b.Account
 }
 
-func testExpected(machines []*Machine, macros Macros, t *testing.T) {
+func testExpected(n *Netrc, t *testing.T) {
 	for i, e := range expectedMachines {
-		if !eqMachine(e, machines[i]) {
-			t.Errorf("bad machine; expected %v, got %v\n", e, machines[i])
+		if !eqMachine(e, n.machines[i]) {
+			t.Errorf("bad machine; expected %v, got %v\n", e, n.machines[i])
 		}
 	}
 
 	for k, v := range expectedMacros {
-		if v != macros[k] {
-			t.Errorf("bad macro for %s; expected %s, got %s\n", k, v, macros[k])
+		if v != n.macros[k] {
+			t.Errorf("bad macro for %s; expected %s, got %s\n", k, v, n.macros[k])
 		}
 	}
 }
@@ -50,21 +50,21 @@ func netrcReader(filename string, t *testing.T) io.Reader {
 
 func TestParse(t *testing.T) {
 	r := netrcReader("examples/good.netrc", t)
-	machines, macros, err := Parse(r)
+	n, err := Parse(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	testExpected(machines, macros, t)
+	testExpected(n, t)
 }
 
 func TestParseFile(t *testing.T) {
-	machines, macros, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("examples/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	testExpected(machines, macros, t)
+	testExpected(n, t)
 
-	_, _, err = ParseFile("examples/bad_default_order.netrc")
+	_, err = ParseFile("examples/bad_default_order.netrc")
 	if err == nil {
 		t.Error("expected an error parsing bad_default_order.netrc, got none")
 	} else if !err.(*Error).BadDefaultOrder() {
