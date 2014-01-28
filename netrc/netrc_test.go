@@ -49,7 +49,7 @@ func netrcReader(filename string, t *testing.T) io.Reader {
 }
 
 func TestParse(t *testing.T) {
-	r := netrcReader("example.netrc", t)
+	r := netrcReader("examples/good.netrc", t)
 	machines, macros, err := Parse(r)
 	if err != nil {
 		t.Fatal(err)
@@ -58,15 +58,22 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseFile(t *testing.T) {
-	machines, macros, err := ParseFile("example.netrc")
+	machines, macros, err := ParseFile("examples/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
 	testExpected(machines, macros, t)
+
+	_, _, err = ParseFile("examples/bad_default_order.netrc")
+	if err == nil {
+		t.Error("expected an error parsing bad_default_order.netrc, got none")
+	} else if !err.(*Error).BadDefaultOrder() {
+		t.Error("expected BadDefaultOrder() to be true, got false")
+	}
 }
 
 func TestFindMachine(t *testing.T) {
-	m, err := FindMachine("example.netrc", "ray")
+	m, err := FindMachine("examples/good.netrc", "ray")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +81,7 @@ func TestFindMachine(t *testing.T) {
 		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
 	}
 
-	m, err = FindMachine("example.netrc", "non.existent")
+	m, err = FindMachine("examples/good.netrc", "non.existent")
 	if err != nil {
 		t.Fatal(err)
 	}

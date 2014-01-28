@@ -69,6 +69,12 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("line %d: %s", e.LineNum, e.Msg)
 }
 
+func (e *Error) BadDefaultOrder() bool {
+	return e.Msg == errBadDefaultOrder
+}
+
+const errBadDefaultOrder = "default token must appear after all machine tokens"
+
 func getToken(b []byte, pos int) ([]byte, *token, error) {
 	adv, wordb, err := bufio.ScanWords(b, true)
 	if err != nil {
@@ -186,6 +192,9 @@ func parse(r io.Reader, pos int) ([]*Machine, Macros, error) {
 			m.Name = ""
 			defaultSeen = true
 		case tkMachine:
+			if defaultSeen {
+				return nil, nil, &Error{pos, errBadDefaultOrder}
+			}
 			if m != nil {
 				mach, m = append(mach, m), nil
 			}
