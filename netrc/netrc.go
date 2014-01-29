@@ -167,6 +167,13 @@ func (m *Machine) UpdateLogin(newlogin string) error {
 	return nil
 }
 
+// UpdateAccount sets the login for the Machine m.
+func (m *Machine) UpdateAccount(newaccount string) error {
+	m.Account = newaccount
+	updateTokenValue(m.accounttoken, newaccount)
+	return nil
+}
+
 func updateTokenValue(t *token, value string) {
 	oldvalue := t.value
 	t.value = value
