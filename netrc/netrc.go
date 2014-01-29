@@ -59,6 +59,21 @@ func (n *Netrc) FindMachine(name string) (*Machine, error) {
 	return def, nil
 }
 
+// MarshalText implements the encoding.TextMarshaler interface to encode a
+// Netrc into text format.
+func (n *Netrc) MarshalText() (text []byte, err error) {
+	for i := range n.tokens {
+		text = append(text, n.tokens[i].rawkind...)
+		switch n.tokens[i].kind {
+		case tkMacdef:
+			text = append(text, ' ')
+			text = append(text, n.tokens[i].macroName...)
+		}
+		text = append(text, n.tokens[i].rawvalue...)
+	}
+	return
+}
+
 // Machine contains information about a remote machine.
 type Machine struct {
 	Name     string
@@ -141,8 +156,8 @@ func scanTokensKeepPrefix(data []byte, atEOF bool) (advance int, token []byte, e
 			break
 		}
 	}
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
+	if atEOF && len(data) == 0 || start == len(data) {
+		return len(data), data, nil
 	}
 	if len(data) > start && data[start] == '#' {
 		return scanLinesKeepPrefix(data, atEOF)
@@ -232,7 +247,6 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 			// if macro rawvalue + rawb would contain \n\n, then macro def is over
 			currentMacro.value = string(bytes.TrimLeft(currentMacro.rawvalue, "\r\n"))
 			nrc.macros[currentMacro.macroName] = currentMacro.value
-			nrc.tokens = append(nrc.tokens, currentMacro)
 			currentMacro = nil
 		}
 
@@ -288,8 +302,6 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, err.Error()}
 			}
 			t.value = m.Account
-		case tkComment:
-			// read whole line
 		}
 
 		nrc.tokens = append(nrc.tokens, t)

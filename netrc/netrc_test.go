@@ -138,6 +138,27 @@ func TestFindMachine(t *testing.T) {
 	}
 }
 
+func TestMarshalText(t *testing.T) {
+	// load up expected netrc Marshal output
+	expected, err := ioutil.ReadAll(netrcReader("examples/good.netrc", t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := n.MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != string(expected) {
+		t.Errorf("expected:\n%q\ngot:\n%q", string(expected), string(result))
+	}
+}
+
 func netrcReader(filename string, t *testing.T) io.Reader {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
