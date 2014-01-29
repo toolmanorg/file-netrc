@@ -133,8 +133,12 @@ func (m *Machine) UpdatePassword(newpass string) error {
 	m.Password = newpass
 	oldpass := m.passtoken.value
 	m.passtoken.value = newpass
-	m.passtoken.rawvalue = bytes.TrimSuffix(m.passtoken.rawvalue, []byte(oldpass))
-	m.passtoken.rawvalue = append(m.passtoken.rawvalue, []byte(newpass)...)
+	newraw := make([]byte, len(m.passtoken.rawvalue))
+	copy(newraw, m.passtoken.rawvalue)
+	m.passtoken.rawvalue = append(
+		bytes.TrimSuffix(newraw, []byte(oldpass)),
+		[]byte(newpass)...,
+	)
 	return nil
 }
 
@@ -301,7 +305,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 
 		if currentMacro != nil && bytes.Contains(rawb, []byte{'\n', '\n'}) {
 			// if macro rawvalue + rawb would contain \n\n, then macro def is over
-			currentMacro.value = string(bytes.TrimLeft(currentMacro.rawvalue, "\r\n"))
+			currentMacro.value = strings.TrimLeft(string(currentMacro.rawvalue), "\r\n")
 			nrc.macros[currentMacro.macroName] = currentMacro.value
 			currentMacro = nil
 		}
