@@ -88,28 +88,56 @@ func (n *Netrc) NewMachine(name, login, password, account string) *Machine {
 		Account:  account,
 
 		nametoken: &token{
-			kind:    tkMachine,
-			rawkind: []byte("\nmachine"),
-			value:   name,
+			kind:     tkMachine,
+			rawkind:  []byte("\nmachine"),
+			value:    name,
+			rawvalue: []byte(" " + name),
 		},
 		logintoken: &token{
-			kind:    tkLogin,
-			rawkind: []byte("\n\tlogin"),
-			value:   login,
+			kind:     tkLogin,
+			rawkind:  []byte("\n\tlogin"),
+			value:    login,
+			rawvalue: []byte(" " + login),
 		},
 		passtoken: &token{
-			kind:    tkPassword,
-			rawkind: []byte("\n\tpassword"),
-			value:   password,
+			kind:     tkPassword,
+			rawkind:  []byte("\n\tpassword"),
+			value:    password,
+			rawvalue: []byte(" " + password),
 		},
 		accounttoken: &token{
-			kind:    tkAccount,
-			rawkind: []byte("\n\taccount"),
-			value:   account,
+			kind:     tkAccount,
+			rawkind:  []byte("\n\taccount"),
+			value:    account,
+			rawvalue: []byte(" " + account),
 		},
 	}
+	n.insertMachineTokensBeforeDefault(m)
 	n.machines = append(n.machines, m)
 	return m
+}
+
+func (n *Netrc) insertMachineTokensBeforeDefault(m *Machine) {
+	newtokens := []*token{m.nametoken}
+	if m.logintoken.value != "" {
+		newtokens = append(newtokens, m.logintoken)
+	}
+	if m.passtoken.value != "" {
+		newtokens = append(newtokens, m.passtoken)
+	}
+	if m.accounttoken.value != "" {
+		newtokens = append(newtokens, m.accounttoken)
+	}
+	for i := range n.tokens {
+		if n.tokens[i].kind == tkDefault {
+			// found the default, now insert tokens before it
+			n.tokens = append(n.tokens[:i], append(newtokens, n.tokens[i:]...)...)
+			return
+		}
+	}
+	// didn't find a default, just add the newtokens to the end
+	n.tokens = append(n.tokens, newtokens...)
+	return
 }
 
 // Machine contains information about a remote machine.
@@ -127,19 +155,27 @@ type Machine struct {
 
 // UpdatePassword sets the password for the Machine m.
 func (m *Machine) UpdatePassword(newpass string) error {
-	if len(newpass) == 0 {
-		return fmt.Errorf("newpass must be at least 1 letter")
-	}
 	m.Password = newpass
-	oldpass := m.passtoken.value
-	m.passtoken.value = newpass
-	newraw := make([]byte, len(m.passtoken.rawvalue))
-	copy(newraw, m.passtoken.rawvalue)
-	m.passtoken.rawvalue = append(
-		bytes.TrimSuffix(newraw, []byte(oldpass)),
-		[]byte(newpass)...,
-	)
+	updateTokenValue(m.passtoken, newpass)
 	return nil
+}
+
+// UpdateLogin sets the login for the Machine m.
+func (m *Machine) UpdateLogin(newlogin string) error {
+	m.Login = newlogin
+	updateTokenValue(m.logintoken, newlogin)
+	return nil
+}
+
+func updateTokenValue(t *token, value string) {
+	oldvalue := t.value
+	t.value = value
+	newraw := make([]byte, len(t.rawvalue))
+	copy(newraw, t.rawvalue)
+	t.rawvalue = append(
+		bytes.TrimSuffix(newraw, []byte(oldvalue)),
+		[]byte(value)...,
+	)
 }
 
 // Macros contains all the macro definitions in a netrc file.

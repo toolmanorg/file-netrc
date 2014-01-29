@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"strings"
 	"testing"
 )
 
@@ -192,6 +193,16 @@ func TestNewMachine(t *testing.T) {
 	loginVal := "dodging-samurai-42@heroku.com"
 	passwordVal := "octocatdodgeballchampions"
 	accountVal := "someacct"
+
+	// sanity check
+	bodyb, _ := n.MarshalText()
+	body := string(bodyb)
+	for _, value := range []string{nameVal, loginVal, passwordVal, accountVal} {
+		if strings.Contains(body, value) {
+			t.Errorf("MarshalText() before NewMachine() contained unexpected %q", value)
+		}
+	}
+
 	m := n.NewMachine(nameVal, loginVal, passwordVal, accountVal)
 	if m == nil {
 		t.Fatalf("NewMachine() returned nil")
@@ -214,6 +225,14 @@ func TestNewMachine(t *testing.T) {
 	checkToken(t, "logintoken", m.logintoken, tkLogin, "\n\tlogin", loginVal)
 	checkToken(t, "passtoken", m.passtoken, tkPassword, "\n\tpassword", passwordVal)
 	checkToken(t, "accounttoken", m.accounttoken, tkAccount, "\n\taccount", accountVal)
+	// check marshal output
+	bodyb, _ = n.MarshalText()
+	body = string(bodyb)
+	for _, value := range []string{nameVal, loginVal, passwordVal, accountVal} {
+		if !strings.Contains(body, value) {
+			t.Errorf("MarshalText() after NewMachine() did not include %q as expected", value)
+		}
+	}
 }
 
 func checkToken(t *testing.T, name string, tok *token, kind tkType, rawkind, value string) {
@@ -243,20 +262,28 @@ type tokenss struct {
 	rawvalue  []byte
 }
 
-func TestUpdatePassword(t *testing.T) {
+func TestUpdateLogin(t *testing.T) {
 	n, err := ParseFile("examples/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	tests := []struct {
-		exists      bool
-		name        string
-		newlogin    string
-		newpassword string
+		exists   bool
+		name     string
+		oldlogin string
+		newlogin string
 	}{
-		{true, "ray", "joe2@gmail.com", "supernewpass"},
-		{false, "heroku.com", "dodging-samurai-42@heroku.com", "octocatdodgeballchampions"},
+		{true, "mail.google.com", "joe@gmail.com", "joe2@gmail.com"},
+		{false, "heroku.com", "", "dodging-samurai-42@heroku.com"},
+	}
+
+	bodyb, _ := n.MarshalText()
+	body := string(bodyb)
+	for _, test := range tests {
+		if strings.Contains(body, test.newlogin) {
+			t.Errorf("MarshalText() before UpdateLogin() contained unexpected %q", test.newlogin)
+		}
 	}
 
 	for _, test := range tests {
@@ -268,7 +295,75 @@ func TestUpdatePassword(t *testing.T) {
 			t.Errorf("expected machine %s to not exist, but it did", test.name)
 		} else {
 			if !test.exists {
-				m = n.NewMachine(test.name, test.newlogin, test.newpassword, "")
+				m = n.NewMachine(test.name, test.newlogin, "", "")
+			}
+			if m == nil {
+				t.Errorf("machine %s was nil", test.name)
+				continue
+			}
+			m.UpdateLogin(test.newlogin)
+			m, _, err := n.FindMachine(test.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.Login != test.newlogin {
+				t.Errorf("expected new login %q, got %q", test.newlogin, m.Login)
+			}
+			if m.logintoken.value != test.newlogin {
+				t.Errorf("expected m.logintoken %q, got %q", test.newlogin, m.logintoken.value)
+			}
+		}
+	}
+
+	bodyb, _ = n.MarshalText()
+	body = string(bodyb)
+	for _, test := range tests {
+		if test.exists && strings.Contains(body, test.oldlogin) {
+			t.Errorf("MarshalText() after UpdateLogin() contained unexpected %q", test.oldlogin)
+		}
+		if !strings.Contains(body, test.newlogin) {
+			t.Errorf("MarshalText after UpdatePassword did not contain %q as expected", test.newlogin)
+		}
+	}
+}
+
+func TestUpdatePassword(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		exists      bool
+		name        string
+		oldpassword string
+		newpassword string
+	}{
+		{true, "ray", "mypassword", "supernewpass"},
+		{false, "heroku.com", "", "octocatdodgeballchampions"},
+	}
+
+	bodyb, _ := n.MarshalText()
+	body := string(bodyb)
+	for _, test := range tests {
+		if test.exists && !strings.Contains(body, test.oldpassword) {
+			t.Errorf("MarshalText() before UpdatePassword() did not include %q as expected", test.oldpassword)
+		}
+		if strings.Contains(body, test.newpassword) {
+			t.Errorf("MarshalText() before UpdatePassword() contained unexpected %q", test.newpassword)
+		}
+	}
+
+	for _, test := range tests {
+		m, def, err := n.FindMachine(test.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if def == test.exists {
+			t.Errorf("expected machine %s to not exist, but it did", test.name)
+		} else {
+			if !test.exists {
+				m = n.NewMachine(test.name, "", test.newpassword, "")
 			}
 			if m == nil {
 				t.Errorf("machine %s was nil", test.name)
@@ -285,6 +380,17 @@ func TestUpdatePassword(t *testing.T) {
 			if m.passtoken.value != test.newpassword {
 				t.Errorf("expected m.passtoken %q, got %q", test.newpassword, m.passtoken.value)
 			}
+		}
+	}
+
+	bodyb, _ = n.MarshalText()
+	body = string(bodyb)
+	for _, test := range tests {
+		if test.exists && strings.Contains(body, test.oldpassword) {
+			t.Errorf("MarshalText() after UpdatePassword() contained unexpected %q", test.oldpassword)
+		}
+		if !strings.Contains(body, test.newpassword) {
+			t.Errorf("MarshalText() after UpdatePassword() did not contain %q as expected", test.newpassword)
 		}
 	}
 }
