@@ -19,7 +19,7 @@ var expectedMachines = []*Machine{
 }
 var expectedMacros = Macros{
 	"allput":  "put src/*",
-	"allput2": "put src/*\nput src2/*",
+	"allput2": "  put src/*\nput src2/*",
 }
 
 func eqMachine(a *Machine, b *Machine) bool {

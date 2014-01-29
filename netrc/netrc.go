@@ -230,7 +230,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 
 		if currentMacro != nil && bytes.Contains(rawb, []byte{'\n', '\n'}) {
 			// if macro rawvalue + rawb would contain \n\n, then macro def is over
-			currentMacro.value = strings.TrimSpace(string(currentMacro.rawvalue))
+			currentMacro.value = string(bytes.TrimLeft(currentMacro.rawvalue, "\r\n"))
 			nrc.macros[currentMacro.macroName] = currentMacro.value
 			nrc.tokens = append(nrc.tokens, currentMacro)
 			currentMacro = nil
