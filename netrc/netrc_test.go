@@ -12,10 +12,10 @@ import (
 )
 
 var expectedMachines = []*Machine{
-	&Machine{"mail.google.com", "joe@gmail.com", "somethingSecret", "gmail"},
-	&Machine{"ray", "demo", "mypassword", ""},
-	&Machine{"weirdlogin", "uname", "pass#pass", ""},
-	&Machine{"", "anonymous", "joe@example.com", ""},
+	&Machine{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "gmail"},
+	&Machine{Name: "ray", Login: "demo", Password: "mypassword", Account: ""},
+	&Machine{Name: "weirdlogin", Login: "uname", Password: "pass#pass", Account: ""},
+	&Machine{Name: "", Login: "anonymous", Password: "joe@example.com", Account: ""},
 }
 var expectedMacros = Macros{
 	"allput":  "put src/*",
@@ -121,20 +121,44 @@ func TestParseFile(t *testing.T) {
 }
 
 func TestFindMachine(t *testing.T) {
-	m, err := FindMachine("examples/good.netrc", "ray")
+	m, def, err := FindMachine("examples/good.netrc", "ray")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !eqMachine(m, expectedMachines[1]) {
 		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
 	}
+	if def {
+		t.Errorf("expected def to be false")
+	}
 
-	m, err = FindMachine("examples/good.netrc", "non.existent")
+	m, def, err = FindMachine("examples/good.netrc", "non.existent")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !eqMachine(m, expectedMachines[3]) {
 		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[3], m)
+	}
+	if !def {
+		t.Errorf("expected def to be true")
+	}
+}
+
+func TestNetrcFindMachine(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m, def, err := n.FindMachine("ray")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !eqMachine(m, expectedMachines[1]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
+	}
+	if def {
+		t.Errorf("expected def to be false")
 	}
 }
 
@@ -156,6 +180,112 @@ func TestMarshalText(t *testing.T) {
 	}
 	if string(result) != string(expected) {
 		t.Errorf("expected:\n%q\ngot:\n%q", string(expected), string(result))
+	}
+}
+
+func TestNewMachine(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nameVal := "heroku.com"
+	loginVal := "dodging-samurai-42@heroku.com"
+	passwordVal := "octocatdodgeballchampions"
+	accountVal := "someacct"
+	m := n.NewMachine(nameVal, loginVal, passwordVal, accountVal)
+	if m == nil {
+		t.Fatalf("NewMachine() returned nil")
+	}
+	// check values
+	if m.Name != nameVal {
+		t.Errorf("m.Name expected %q, got %q", nameVal, m.Name)
+	}
+	if m.Login != loginVal {
+		t.Errorf("m.Login expected %q, got %q", loginVal, m.Login)
+	}
+	if m.Password != passwordVal {
+		t.Errorf("m.Password expected %q, got %q", passwordVal, m.Password)
+	}
+	if m.Account != accountVal {
+		t.Errorf("m.Account expected %q, got %q", accountVal, m.Account)
+	}
+	// check tokens
+	checkToken(t, "nametoken", m.nametoken, tkMachine, "\nmachine", nameVal)
+	checkToken(t, "logintoken", m.logintoken, tkLogin, "\n\tlogin", loginVal)
+	checkToken(t, "passtoken", m.passtoken, tkPassword, "\n\tpassword", passwordVal)
+	checkToken(t, "accounttoken", m.accounttoken, tkAccount, "\n\taccount", accountVal)
+}
+
+func checkToken(t *testing.T, name string, tok *token, kind tkType, rawkind, value string) {
+	if tok == nil {
+		t.Errorf("%s not defined", name)
+		return
+	}
+	if tok.kind != kind {
+		t.Errorf("%s expected kind %d, got %d", name, kind, tok.kind)
+	}
+	if string(tok.rawkind) != rawkind {
+		t.Errorf("%s expected rawkind %q, got %q", name, rawkind, string(tok.rawkind))
+	}
+	if tok.value != value {
+		t.Errorf("%s expected value %q, got %q", name, value, tok.value)
+	}
+	if tok.value != value {
+		t.Errorf("%s expected value %q, got %q", name, value, tok.value)
+	}
+}
+
+type tokenss struct {
+	kind      tkType
+	macroName string
+	value     string
+	rawkind   []byte
+	rawvalue  []byte
+}
+
+func TestUpdatePassword(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		exists      bool
+		name        string
+		newlogin    string
+		newpassword string
+	}{
+		{true, "ray", "joe2@gmail.com", "supernewpass"},
+		{false, "heroku.com", "dodging-samurai-42@heroku.com", "octocatdodgeballchampions"},
+	}
+
+	for _, test := range tests {
+		m, def, err := n.FindMachine(test.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if def == test.exists {
+			t.Errorf("expected machine %s to not exist, but it did", test.name)
+		} else {
+			if !test.exists {
+				m = n.NewMachine(test.name, test.newlogin, test.newpassword, "")
+			}
+			if m == nil {
+				t.Errorf("machine %s was nil", test.name)
+				continue
+			}
+			m.UpdatePassword(test.newpassword)
+			m, _, err := n.FindMachine(test.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.Password != test.newpassword {
+				t.Errorf("expected new password %q, got %q", test.newpassword, m.Password)
+			}
+			if m.passtoken.value != test.newpassword {
+				t.Errorf("expected m.passtoken %q, got %q", test.newpassword, m.passtoken.value)
+			}
+		}
 	}
 }
 

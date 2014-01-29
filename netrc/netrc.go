@@ -37,31 +37,36 @@ var keywords = map[string]tkType{
 }
 
 type Netrc struct {
-	pre      string
 	tokens   []*token
 	machines []*Machine
 	macros   Macros
 }
 
-func (n *Netrc) FindMachine(name string) (*Machine, error) {
+// FindMachine returns the Machine in n named by name. If a machine named by
+// name exists, it is returned and isDefault is false. If no Machine with name
+// name is found and there is a ``default'' machine, the ``default'' machine is
+// returned and isDefault is true. Otherwise, an error is returned.
+func (n *Netrc) FindMachine(name string) (m *Machine, isDefault bool, err error) {
+	// TODO(bgentry): not safe for concurrency
 	var def *Machine
-	for _, m := range n.machines {
+	for _, m = range n.machines {
 		if m.Name == name {
-			return m, nil
+			return m, false, nil
 		}
 		if m.Name == "" {
 			def = m
 		}
 	}
 	if def == nil {
-		return nil, errors.New("no machine found")
+		return nil, false, errors.New("no machine found")
 	}
-	return def, nil
+	return def, true, nil
 }
 
 // MarshalText implements the encoding.TextMarshaler interface to encode a
 // Netrc into text format.
 func (n *Netrc) MarshalText() (text []byte, err error) {
+	// TODO(bgentry): not safe for concurrency
 	for i := range n.tokens {
 		text = append(text, n.tokens[i].rawkind...)
 		switch n.tokens[i].kind {
@@ -74,12 +79,63 @@ func (n *Netrc) MarshalText() (text []byte, err error) {
 	return
 }
 
+func (n *Netrc) NewMachine(name, login, password, account string) *Machine {
+	// TODO(bgentry): not safe for concurrency
+	m := &Machine{
+		Name:     name,
+		Login:    login,
+		Password: password,
+		Account:  account,
+
+		nametoken: &token{
+			kind:    tkMachine,
+			rawkind: []byte("\nmachine"),
+			value:   name,
+		},
+		logintoken: &token{
+			kind:    tkLogin,
+			rawkind: []byte("\n\tlogin"),
+			value:   login,
+		},
+		passtoken: &token{
+			kind:    tkPassword,
+			rawkind: []byte("\n\tpassword"),
+			value:   password,
+		},
+		accounttoken: &token{
+			kind:    tkAccount,
+			rawkind: []byte("\n\taccount"),
+			value:   account,
+		},
+	}
+	n.machines = append(n.machines, m)
+	return m
+}
+
 // Machine contains information about a remote machine.
 type Machine struct {
 	Name     string
 	Login    string
 	Password string
 	Account  string
+
+	nametoken    *token
+	logintoken   *token
+	passtoken    *token
+	accounttoken *token
+}
+
+// UpdatePassword sets the password for the Machine m.
+func (m *Machine) UpdatePassword(newpass string) error {
+	if len(newpass) == 0 {
+		return fmt.Errorf("newpass must be at least 1 letter")
+	}
+	m.Password = newpass
+	oldpass := m.passtoken.value
+	m.passtoken.value = newpass
+	m.passtoken.rawvalue = bytes.TrimSuffix(m.passtoken.rawvalue, []byte(oldpass))
+	m.passtoken.rawvalue = append(m.passtoken.rawvalue, []byte(newpass)...)
+	return nil
 }
 
 // Macros contains all the macro definitions in a netrc file.
@@ -114,7 +170,7 @@ const errBadDefaultOrder = "default token must appear after all machine tokens"
 // of text. The returned token may include newlines if they are before the
 // first non-space character. The returned line may be empty. The end-of-line
 // marker is one optional carriage return followed by one mandatory newline. In
-// regular expression notation, it is `\r?\n`.  The last non-empty line of
+// regular expression notation, it is `\r?\n`. The last non-empty line of
 // input will be returned even if it has no newline.
 func scanLinesKeepPrefix(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	if atEOF && len(data) == 0 {
@@ -278,6 +334,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, err.Error()}
 			}
 			t.value = m.Name
+			m.nametoken = t
 		case tkLogin:
 			if m == nil || m.Login != "" {
 				return nil, &Error{pos, "unexpected token login "}
@@ -286,6 +343,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, err.Error()}
 			}
 			t.value = m.Login
+			m.logintoken = t
 		case tkPassword:
 			if m == nil || m.Password != "" {
 				return nil, &Error{pos, "unexpected token password"}
@@ -294,6 +352,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, err.Error()}
 			}
 			t.value = m.Password
+			m.passtoken = t
 		case tkAccount:
 			if m == nil || m.Account != "" {
 				return nil, &Error{pos, "unexpected token account"}
@@ -302,6 +361,7 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, err.Error()}
 			}
 			t.value = m.Account
+			m.accounttoken = t
 		}
 
 		nrc.tokens = append(nrc.tokens, t)
@@ -338,13 +398,15 @@ func Parse(r io.Reader) (*Netrc, error) {
 	return parse(r, 1)
 }
 
-// FindMachine parses the netrc file identified by filename and returns
-// the Machine named by name. If no Machine with name name is found, the
-// ``default'' machine is returned.
-func FindMachine(filename, name string) (*Machine, error) {
+// FindMachine parses the netrc file identified by filename and returns the
+// Machine named by name. If a machine named by name exists, it is returned and
+// isDefault is false. If no Machine with name name is found and there is a
+// ``default'' machine, the ``default'' machine is returned and isDefault is
+// true. Otherwise, an error is returned.
+func FindMachine(filename, name string) (m *Machine, isDefault bool, err error) {
 	n, err := ParseFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	return n.FindMachine(name)
 }
