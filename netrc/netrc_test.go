@@ -1,4 +1,5 @@
-// Copyright © 2010 Fazlul Shahriar <fshahriar@gmail.com>.
+// Copyright © 2010 Fazlul Shahriar <fshahriar@gmail.com> and
+// Copyright © 2014 Blake Gentry <blakesgentry@gmail.com>.
 // See LICENSE file for license details.
 
 package netrc
@@ -13,10 +14,12 @@ import (
 var expectedMachines = []*Machine{
 	&Machine{"mail.google.com", "joe@gmail.com", "somethingSecret", "gmail"},
 	&Machine{"ray", "demo", "mypassword", ""},
+	&Machine{"weirdlogin", "uname", "pass#pass", ""},
 	&Machine{"", "anonymous", "joe@example.com", ""},
 }
 var expectedMacros = Macros{
-	"allput": "put src/*",
+	"allput":  "put src/*",
+	"allput2": "put src/*\nput src2/*",
 }
 
 func eqMachine(a *Machine, b *Machine) bool {
@@ -27,25 +30,70 @@ func eqMachine(a *Machine, b *Machine) bool {
 }
 
 func testExpected(n *Netrc, t *testing.T) {
-	for i, e := range expectedMachines {
-		if !eqMachine(e, n.machines[i]) {
-			t.Errorf("bad machine; expected %v, got %v\n", e, n.machines[i])
+	if len(expectedMachines) != len(n.machines) {
+		t.Errorf("expected %d machines, got %d", len(expectedMachines), len(n.machines))
+	} else {
+		for i, e := range expectedMachines {
+			if !eqMachine(e, n.machines[i]) {
+				t.Errorf("bad machine; expected %v, got %v\n", e, n.machines[i])
+			}
 		}
 	}
 
-	for k, v := range expectedMacros {
-		if v != n.macros[k] {
-			t.Errorf("bad macro for %s; expected %s, got %s\n", k, v, n.macros[k])
+	if len(expectedMacros) != len(n.macros) {
+		t.Errorf("expected %d macros, got %d", len(expectedMacros), len(n.macros))
+	} else {
+		for k, v := range expectedMacros {
+			if v != n.macros[k] {
+				t.Errorf("bad macro for %s; expected %q, got %q\n", k, v, n.macros[k])
+			}
 		}
 	}
 }
 
-func netrcReader(filename string, t *testing.T) io.Reader {
-	b, err := ioutil.ReadFile(filename)
-	if err != nil {
-		t.Fatal(err)
+var newTokenTests = []struct {
+	rawkind string
+	tkind   tkType
+}{
+	{"machine", tkMachine},
+	{"\n\n\tmachine", tkMachine},
+	{"\n   machine", tkMachine},
+	{"default", tkDefault},
+	{"login", tkLogin},
+	{"password", tkPassword},
+	{"account", tkAccount},
+	{"macdef", tkMacdef},
+	{"\n # comment stuff ", tkComment},
+	{"\n # I am another comment", tkComment},
+	{"\n\t\n ", tkWhitespace},
+}
+
+var newTokenInvalidTests = []string{
+	" junk",
+	"sdfdsf",
+	"account#unspaced comment",
+}
+
+func TestNewToken(t *testing.T) {
+	for _, tktest := range newTokenTests {
+		tok, err := newToken([]byte(tktest.rawkind))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tok.kind != tktest.tkind {
+			t.Errorf("expected tok.kind %d, got %d", tktest.tkind, tok.kind)
+		}
+		if string(tok.rawkind) != tktest.rawkind {
+			t.Errorf("expected tok.rawkind %q, got %q", tktest.rawkind, string(tok.rawkind))
+		}
 	}
-	return bytes.NewReader(b)
+
+	for _, tktest := range newTokenInvalidTests {
+		_, err := newToken([]byte(tktest))
+		if err == nil {
+			t.Errorf("expected error with %q, got none", tktest)
+		}
+	}
 }
 
 func TestParse(t *testing.T) {
@@ -85,7 +133,15 @@ func TestFindMachine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !eqMachine(m, expectedMachines[2]) {
-		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[2], m)
+	if !eqMachine(m, expectedMachines[3]) {
+		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[3], m)
 	}
+}
+
+func netrcReader(filename string, t *testing.T) io.Reader {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes.NewReader(b)
 }

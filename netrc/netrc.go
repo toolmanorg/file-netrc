@@ -1,12 +1,3 @@
-// Copyright © 2010 Fazlul Shahriar <fshahriar@gmail.com>.
-// See LICENSE file for license details.
-
-// Package netrc implements a parser for netrc file format.
-//
-// A netrc file usually resides in $HOME/.netrc and is traditionally used
-// by the ftp(1) program to look up login information (username, password,
-// etc.) of remote system(s). The file format is (loosely) described in
-// this man page: http://linux.die.net/man/5/netrc .
 package netrc
 
 import (
@@ -17,21 +8,25 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
+type tkType int
+
 const (
-	tkMachine = iota
+	tkMachine tkType = iota
 	tkDefault
 	tkLogin
 	tkPassword
 	tkAccount
 	tkMacdef
 	tkComment
+	tkWhitespace
 )
 
-var keywords = map[string]int{
+var keywords = map[string]tkType{
 	"machine":  tkMachine,
 	"default":  tkDefault,
 	"login":    tkLogin,
@@ -76,9 +71,11 @@ type Machine struct {
 type Macros map[string]string
 
 type token struct {
-	kind      int
+	kind      tkType
 	macroName string
 	value     string
+	rawkind   []byte
+	rawvalue  []byte
 }
 
 // Error represents a netrc file parse error.
@@ -98,118 +95,159 @@ func (e *Error) BadDefaultOrder() bool {
 
 const errBadDefaultOrder = "default token must appear after all machine tokens"
 
-func getToken(b []byte, pos int) ([]byte, *token, error) {
-	adv, wordb, err := bufio.ScanWords(b, true)
+// scanLinesKeepPrefix is a split function for a Scanner that returns each line
+// of text. The returned token may include newlines if they are before the
+// first non-space character. The returned line may be empty. The end-of-line
+// marker is one optional carriage return followed by one mandatory newline. In
+// regular expression notation, it is `\r?\n`.  The last non-empty line of
+// input will be returned even if it has no newline.
+func scanLinesKeepPrefix(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	// Skip leading spaces.
+	start := 0
+	for width := 0; start < len(data); start += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[start:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+	}
+	if i := bytes.IndexByte(data[start:], '\n'); i >= 0 {
+		// We have a full newline-terminated line.
+		return start + i, data[0 : start+i], nil
+	}
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), data, nil
+	}
+	// Request more data.
+	return 0, nil, nil
+}
+
+// scanWordsKeepPrefix is a split function for a Scanner that returns each
+// space-separated word of text, with prefixing spaces included. It will never
+// return an empty string. The definition of space is set by unicode.IsSpace.
+//
+// Adapted from bufio.ScanWords().
+func scanTokensKeepPrefix(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	// Skip leading spaces.
+	start := 0
+	for width := 0; start < len(data); start += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[start:])
+		if !unicode.IsSpace(r) {
+			break
+		}
+	}
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
+	}
+	if len(data) > start && data[start] == '#' {
+		return scanLinesKeepPrefix(data, atEOF)
+	}
+	// Scan until space, marking end of word.
+	for width, i := 0, start; i < len(data); i += width {
+		var r rune
+		r, width = utf8.DecodeRune(data[i:])
+		if unicode.IsSpace(r) {
+			return i, data[:i], nil
+		}
+	}
+	// If we're at EOF, we have a final, non-empty, non-terminated word. Return it.
+	if atEOF && len(data) > start {
+		return len(data), data, nil
+	}
+	// Request more data.
+	return 0, nil, nil
+}
+
+func newToken(rawb []byte) (*token, error) {
+	_, tkind, err := bufio.ScanWords(rawb, true)
 	if err != nil {
-		return b, nil, err // should never happen
+		return nil, err
 	}
-	b = b[adv:]
-	word := string(wordb)
-	if word == "" {
-		return b, nil, nil // EOF reached
-	}
-
-	t := new(token)
 	var ok bool
-	t.kind, ok = keywords[word]
+	t := token{rawkind: rawb}
+	t.kind, ok = keywords[string(tkind)]
 	if !ok {
-		return b, nil, &Error{pos, "keyword expected; got " + word}
-	}
-	if t.kind == tkDefault {
-		return b, t, nil
-	}
-	if t.kind == tkComment {
-		t.value = word + " "
-		adv, wordb, err = bufio.ScanLines(b, true)
-		if err != nil {
-			return b, nil, err // should never happen
+		trimmed := strings.TrimSpace(string(tkind))
+		if trimmed == "" {
+			t.kind = tkWhitespace // whitespace-only, should happen only at EOF
+			return &t, nil
 		}
-		t.value = t.value + string(wordb)
-		return b[adv:], t, nil
+		if strings.HasPrefix(trimmed, "#") {
+			t.kind = tkComment // this is a comment
+			return &t, nil
+		}
+		return &t, fmt.Errorf("keyword expected; got " + string(tkind))
 	}
+	return &t, nil
+}
 
-	if word == "" {
-		return b, nil, &Error{pos, "word expected"}
+func scanValue(scanner *bufio.Scanner, pos int) ([]byte, string, int, error) {
+	if scanner.Scan() {
+		raw := scanner.Bytes()
+		pos += bytes.Count(raw, []byte{'\n'})
+		return raw, strings.TrimSpace(string(raw)), pos, nil
 	}
-	if t.kind == tkMacdef {
-		adv, lineb, err := bufio.ScanLines(b, true)
-		if err != nil {
-			return b, nil, err // should never happen
-		}
-		b = b[adv:]
-		adv, wordb, err = bufio.ScanWords(lineb, true)
-		if err != nil {
-			return b, nil, err // should never happen
-		}
-		word = string(wordb)
-		t.macroName = word
-		lineb = lineb[adv:]
-
-		// Macro value starts on next line. The rest of current line
-		// should contain nothing but whitespace
-		i := 0
-		for i < len(lineb) {
-			r, size := utf8.DecodeRune(lineb[i:])
-			if r == '\n' {
-				i += size
-				pos++
-				break
-			}
-			if !unicode.IsSpace(r) {
-				return b, nil, &Error{pos, "unexpected word"}
-			}
-			i += size
-		}
-
-		// Find end of macro value
-		i = bytes.Index(b, []byte("\n\n"))
-		if i < 0 { // EOF reached
-			i = len(b)
-		}
-		t.value = string(b[0:i])
-
-		return b[i:], t, nil
-	} else {
-		adv, wordb, err = bufio.ScanWords(b, true)
-		if err != nil {
-			return b, nil, err // should never happen
-		}
-		word = string(wordb)
-		b = b[adv:]
+	if err := scanner.Err(); err != nil {
+		return nil, "", pos, &Error{pos, err.Error()}
 	}
-	t.value = word
-	return b, t, nil
+	return nil, "", pos, nil
 }
 
 func parse(r io.Reader, pos int) (*Netrc, error) {
-	// TODO(fhs): Clear memory containing password.
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 
-	mach := make([]*Machine, 0, 20)
-	mac := make(Macros, 10)
-	var defaultSeen bool
+	nrc := Netrc{machines: make([]*Machine, 0, 20), macros: make(Macros, 10)}
+
+	defaultSeen := false
+	var currentMacro *token
 	var m *Machine
 	var t *token
-	for {
-		b, t, err = getToken(b, pos)
-		if err != nil {
-			return nil, err
-		}
-		if t == nil {
+	scanner := bufio.NewScanner(bytes.NewReader(b))
+	scanner.Split(scanTokensKeepPrefix)
+
+	for scanner.Scan() {
+		rawb := scanner.Bytes()
+		if len(rawb) == 0 {
 			break
 		}
+		pos += bytes.Count(rawb, []byte{'\n'})
+		t, err = newToken(rawb)
+		if err != nil {
+			if currentMacro == nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			currentMacro.rawvalue = append(currentMacro.rawvalue, rawb...)
+			continue
+		}
+
+		if currentMacro != nil && bytes.Contains(rawb, []byte{'\n', '\n'}) {
+			// if macro rawvalue + rawb would contain \n\n, then macro def is over
+			currentMacro.value = strings.TrimSpace(string(currentMacro.rawvalue))
+			nrc.macros[currentMacro.macroName] = currentMacro.value
+			nrc.tokens = append(nrc.tokens, currentMacro)
+			currentMacro = nil
+		}
+
 		switch t.kind {
 		case tkMacdef:
-			mac[t.macroName] = t.value
+			if _, t.macroName, pos, err = scanValue(scanner, pos); err != nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			currentMacro = t
 		case tkDefault:
 			if defaultSeen {
 				return nil, &Error{pos, "multiple default token"}
 			}
 			if m != nil {
-				mach, m = append(mach, m), nil
+				nrc.machines, m = append(nrc.machines, m), nil
 			}
 			m = new(Machine)
 			m.Name = ""
@@ -219,37 +257,57 @@ func parse(r io.Reader, pos int) (*Netrc, error) {
 				return nil, &Error{pos, errBadDefaultOrder}
 			}
 			if m != nil {
-				mach, m = append(mach, m), nil
+				nrc.machines, m = append(nrc.machines, m), nil
 			}
 			m = new(Machine)
-			m.Name = t.value
+			if t.rawvalue, m.Name, pos, err = scanValue(scanner, pos); err != nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			t.value = m.Name
 		case tkLogin:
 			if m == nil || m.Login != "" {
 				return nil, &Error{pos, "unexpected token login "}
 			}
-			m.Login = t.value
+			if t.rawvalue, m.Login, pos, err = scanValue(scanner, pos); err != nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			t.value = m.Login
 		case tkPassword:
 			if m == nil || m.Password != "" {
 				return nil, &Error{pos, "unexpected token password"}
 			}
-			m.Password = t.value
+			if t.rawvalue, m.Password, pos, err = scanValue(scanner, pos); err != nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			t.value = m.Password
 		case tkAccount:
 			if m == nil || m.Account != "" {
 				return nil, &Error{pos, "unexpected token account"}
 			}
-			m.Account = t.value
+			if t.rawvalue, m.Account, pos, err = scanValue(scanner, pos); err != nil {
+				return nil, &Error{pos, err.Error()}
+			}
+			t.value = m.Account
+		case tkComment:
+			// read whole line
 		}
+
+		nrc.tokens = append(nrc.tokens, t)
 	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
 	if m != nil {
-		mach, m = append(mach, m), nil
+		nrc.machines, m = append(nrc.machines, m), nil
 	}
-	return &Netrc{machines: mach, macros: mac}, nil
+	return &nrc, nil
 }
 
 // ParseFile opens the file at filename and then passes its io.Reader to
 // Parse().
 func ParseFile(filename string) (*Netrc, error) {
-	// TODO(fhs): Check if file is readable by anyone besides the user if there is password in it.
 	fd, err := os.Open(filename)
 	if err != nil {
 		return nil, err
