@@ -184,53 +184,105 @@ func TestMarshalText(t *testing.T) {
 	}
 }
 
+var newMachineTests = []struct {
+	name     string
+	login    string
+	password string
+	account  string
+}{
+	{"heroku.com", "dodging-samurai-42@heroku.com", "octocatdodgeballchampions", "2011+2013"},
+	{"bgentry.io", "special@test.com", "noacct", ""},
+	{"github.io", "2@test.com", "", "acctwithnopass"},
+	{"someotherapi.com", "", "passonly", ""},
+}
+
 func TestNewMachine(t *testing.T) {
 	n, err := ParseFile("examples/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
-	nameVal := "heroku.com"
-	loginVal := "dodging-samurai-42@heroku.com"
-	passwordVal := "octocatdodgeballchampions"
-	accountVal := "someacct"
+	testNewMachine(t, n)
+	n = &Netrc{}
+	testNewMachine(t, n)
 
-	// sanity check
-	bodyb, _ := n.MarshalText()
-	body := string(bodyb)
-	for _, value := range []string{nameVal, loginVal, passwordVal, accountVal} {
-		if strings.Contains(body, value) {
-			t.Errorf("MarshalText() before NewMachine() contained unexpected %q", value)
+	// make sure that tokens without a value are not serialized at all
+	for _, test := range newMachineTests {
+		n = &Netrc{}
+		_ = n.NewMachine(test.name, test.login, test.password, test.account)
+
+		bodyb, _ := n.MarshalText()
+		body := string(bodyb)
+
+		// ensure desired values are present when they should be
+		if !strings.Contains(body, "machine") {
+			t.Errorf("NewMachine() %s missing keyword 'machine'", test.name)
+		}
+		if !strings.Contains(body, test.name) {
+			t.Errorf("NewMachine() %s missing value %q", test.name, test.name)
+		}
+		if test.login != "" && !strings.Contains(body, "login "+test.login) {
+			t.Errorf("NewMachine() %s missing value %q", test.name, "login "+test.login)
+		}
+		if test.password != "" && !strings.Contains(body, "password "+test.password) {
+			t.Errorf("NewMachine() %s missing value %q", test.name, "password "+test.password)
+		}
+		if test.account != "" && !strings.Contains(body, "account "+test.account) {
+			t.Errorf("NewMachine() %s missing value %q", test.name, "account "+test.account)
+		}
+
+		// ensure undesired values are not present when they shouldn't be
+		if test.login == "" && strings.Contains(body, "login") {
+			t.Errorf("NewMachine() %s contains unexpected value %q", test.name, "login")
+		}
+		if test.password == "" && strings.Contains(body, "password") {
+			t.Errorf("NewMachine() %s contains unexpected value %q", test.name, "password")
+		}
+		if test.account == "" && strings.Contains(body, "account") {
+			t.Errorf("NewMachine() %s contains unexpected value %q", test.name, "account")
 		}
 	}
+}
 
-	m := n.NewMachine(nameVal, loginVal, passwordVal, accountVal)
-	if m == nil {
-		t.Fatalf("NewMachine() returned nil")
-	}
-	// check values
-	if m.Name != nameVal {
-		t.Errorf("m.Name expected %q, got %q", nameVal, m.Name)
-	}
-	if m.Login != loginVal {
-		t.Errorf("m.Login expected %q, got %q", loginVal, m.Login)
-	}
-	if m.Password != passwordVal {
-		t.Errorf("m.Password expected %q, got %q", passwordVal, m.Password)
-	}
-	if m.Account != accountVal {
-		t.Errorf("m.Account expected %q, got %q", accountVal, m.Account)
-	}
-	// check tokens
-	checkToken(t, "nametoken", m.nametoken, tkMachine, "\nmachine", nameVal)
-	checkToken(t, "logintoken", m.logintoken, tkLogin, "\n\tlogin", loginVal)
-	checkToken(t, "passtoken", m.passtoken, tkPassword, "\n\tpassword", passwordVal)
-	checkToken(t, "accounttoken", m.accounttoken, tkAccount, "\n\taccount", accountVal)
-	// check marshal output
-	bodyb, _ = n.MarshalText()
-	body = string(bodyb)
-	for _, value := range []string{nameVal, loginVal, passwordVal, accountVal} {
-		if !strings.Contains(body, value) {
-			t.Errorf("MarshalText() after NewMachine() did not include %q as expected", value)
+func testNewMachine(t *testing.T, n *Netrc) {
+	for _, test := range newMachineTests {
+		// sanity check
+		bodyb, _ := n.MarshalText()
+		body := string(bodyb)
+		for _, value := range []string{test.name, test.login, test.password, test.account} {
+			if value != "" && strings.Contains(body, value) {
+				t.Errorf("MarshalText() before NewMachine() contained unexpected %q", value)
+			}
+		}
+
+		m := n.NewMachine(test.name, test.login, test.password, test.account)
+		if m == nil {
+			t.Fatalf("NewMachine() returned nil")
+		}
+		// check values
+		if m.Name != test.name {
+			t.Errorf("m.Name expected %q, got %q", test.name, m.Name)
+		}
+		if m.Login != test.login {
+			t.Errorf("m.Login expected %q, got %q", test.login, m.Login)
+		}
+		if m.Password != test.password {
+			t.Errorf("m.Password expected %q, got %q", test.password, m.Password)
+		}
+		if m.Account != test.account {
+			t.Errorf("m.Account expected %q, got %q", test.account, m.Account)
+		}
+		// check tokens
+		checkToken(t, "nametoken", m.nametoken, tkMachine, "\nmachine", test.name)
+		checkToken(t, "logintoken", m.logintoken, tkLogin, "\n\tlogin", test.login)
+		checkToken(t, "passtoken", m.passtoken, tkPassword, "\n\tpassword", test.password)
+		checkToken(t, "accounttoken", m.accounttoken, tkAccount, "\n\taccount", test.account)
+		// check marshal output
+		bodyb, _ = n.MarshalText()
+		body = string(bodyb)
+		for _, value := range []string{test.name, test.login, test.password, test.account} {
+			if !strings.Contains(body, value) {
+				t.Errorf("MarshalText() after NewMachine() did not include %q as expected", value)
+			}
 		}
 	}
 }
@@ -252,14 +304,6 @@ func checkToken(t *testing.T, name string, tok *token, kind tkType, rawkind, val
 	if tok.value != value {
 		t.Errorf("%s expected value %q, got %q", name, value, tok.value)
 	}
-}
-
-type tokenss struct {
-	kind      tkType
-	macroName string
-	value     string
-	rawkind   []byte
-	rawvalue  []byte
 }
 
 func TestUpdateLogin(t *testing.T) {
