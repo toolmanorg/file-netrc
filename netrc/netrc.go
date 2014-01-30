@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -37,9 +38,10 @@ var keywords = map[string]tkType{
 }
 
 type Netrc struct {
-	tokens   []*token
-	machines []*Machine
-	macros   Macros
+	tokens     []*token
+	machines   []*Machine
+	macros     Macros
+	updateLock sync.Mutex
 }
 
 // FindMachine returns the Machine in n named by name. If a machine named by
@@ -80,7 +82,9 @@ func (n *Netrc) MarshalText() (text []byte, err error) {
 }
 
 func (n *Netrc) NewMachine(name, login, password, account string) *Machine {
-	// TODO(bgentry): not safe for concurrency
+	n.updateLock.Lock()
+	defer n.updateLock.Unlock()
+
 	m := &Machine{
 		Name:     name,
 		Login:    login,
