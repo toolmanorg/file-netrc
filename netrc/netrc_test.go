@@ -245,6 +245,7 @@ func TestNewMachine(t *testing.T) {
 
 func testNewMachine(t *testing.T, n *Netrc) {
 	for _, test := range newMachineTests {
+		mcount := len(n.machines)
 		// sanity check
 		bodyb, _ := n.MarshalText()
 		body := string(bodyb)
@@ -257,6 +258,10 @@ func testNewMachine(t *testing.T, n *Netrc) {
 		m := n.NewMachine(test.name, test.login, test.password, test.account)
 		if m == nil {
 			t.Fatalf("NewMachine() returned nil")
+		}
+
+		if len(n.machines) != mcount+1 {
+			t.Errorf("n.machines count expected %d, got %d", mcount+1, len(n.machines))
 		}
 		// check values
 		if m.Name != test.name {
@@ -303,6 +308,17 @@ func checkToken(t *testing.T, name string, tok *token, kind tkType, rawkind, val
 	}
 	if tok.value != value {
 		t.Errorf("%s expected value %q, got %q", name, value, tok.value)
+	}
+}
+
+func TestNewMachineGoesBeforeDefault(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := n.NewMachine("mymachine", "mylogin", "mypassword", "myaccount")
+	if m2 := n.machines[len(n.machines)-2]; m2 != m {
+		t.Errorf("expected machine %v, got %v", m, m2)
 	}
 }
 

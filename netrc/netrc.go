@@ -53,7 +53,7 @@ func (n *Netrc) FindMachine(name string) (m *Machine, isDefault bool, err error)
 		if m.Name == name {
 			return m, false, nil
 		}
-		if m.Name == "" {
+		if m.IsDefault() {
 			def = m
 		}
 	}
@@ -113,6 +113,12 @@ func (n *Netrc) NewMachine(name, login, password, account string) *Machine {
 		},
 	}
 	n.insertMachineTokensBeforeDefault(m)
+	for i := range n.machines {
+		if n.machines[i].IsDefault() {
+			n.machines = append(append(n.machines[:i], m), n.machines[i:]...)
+			return m
+		}
+	}
 	n.machines = append(n.machines, m)
 	return m
 }
@@ -151,6 +157,12 @@ type Machine struct {
 	logintoken   *token
 	passtoken    *token
 	accounttoken *token
+}
+
+// IsDefault returns true if the machine is a "default" token, denoted by an
+// empty name.
+func (m *Machine) IsDefault() bool {
+	return m.Name == ""
 }
 
 // UpdatePassword sets the password for the Machine m.
