@@ -43,24 +43,24 @@ type Netrc struct {
 }
 
 // FindMachine returns the Machine in n named by name. If a machine named by
-// name exists, it is returned and isDefault is false. If no Machine with name
-// name is found and there is a ``default'' machine, the ``default'' machine is
-// returned and isDefault is true. Otherwise, an error is returned.
-func (n *Netrc) FindMachine(name string) (m *Machine, isDefault bool, err error) {
+// name exists, it is returned. If no Machine with name name is found and there
+// is a ``default'' machine, the ``default'' machine is returned . Otherwise, an
+// error is returned.
+func (n *Netrc) FindMachine(name string) (m *Machine, err error) {
 	// TODO(bgentry): not safe for concurrency
 	var def *Machine
 	for _, m = range n.machines {
 		if m.Name == name {
-			return m, false, nil
+			return m, nil
 		}
 		if m.IsDefault() {
 			def = m
 		}
 	}
 	if def == nil {
-		return nil, false, errors.New("no machine found")
+		return nil, errors.New("no machine found")
 	}
-	return def, true, nil
+	return def, nil
 }
 
 // MarshalText implements the encoding.TextMarshaler interface to encode a
@@ -458,14 +458,13 @@ func Parse(r io.Reader) (*Netrc, error) {
 }
 
 // FindMachine parses the netrc file identified by filename and returns the
-// Machine named by name. If a machine named by name exists, it is returned and
-// isDefault is false. If no Machine with name name is found and there is a
-// ``default'' machine, the ``default'' machine is returned and isDefault is
-// true. Otherwise, an error is returned.
-func FindMachine(filename, name string) (m *Machine, isDefault bool, err error) {
+// Machine named by name. If a machine named by name exists, it is returned. If
+// no Machine with name name is found and there is a ``default'' machine, the
+// ``default'' machine is returned. Otherwise, an error is returned.
+func FindMachine(filename, name string) (m *Machine, err error) {
 	n, err := ParseFile(filename)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	return n.FindMachine(name)
 }
