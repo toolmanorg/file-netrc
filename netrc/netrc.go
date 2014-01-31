@@ -149,6 +149,35 @@ func (n *Netrc) insertMachineTokensBeforeDefault(m *Machine) {
 	return
 }
 
+func (n *Netrc) RemoveMachine(name string) {
+	n.updateLock.Lock()
+	defer n.updateLock.Unlock()
+
+	for i := range n.machines {
+		if n.machines[i] != nil && n.machines[i].Name == name {
+			m := n.machines[i]
+			for _, t := range []*token{
+				m.nametoken, m.logintoken, m.passtoken, m.accounttoken,
+			} {
+				n.removeToken(t)
+			}
+			n.machines = append(n.machines[:i], n.machines[i+1:]...)
+			return
+		}
+	}
+}
+
+func (n *Netrc) removeToken(t *token) {
+	if t != nil {
+		for i := range n.tokens {
+			if n.tokens[i] == t {
+				n.tokens = append(n.tokens[:i], n.tokens[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
 // Machine contains information about a remote machine.
 type Machine struct {
 	Name     string

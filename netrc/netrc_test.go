@@ -325,6 +325,57 @@ func TestNewMachineGoesBeforeDefault(t *testing.T) {
 	}
 }
 
+func TestRemoveMachine(t *testing.T) {
+	n, err := ParseFile("examples/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []string{"mail.google.com", "weirdlogin"}
+
+	for _, name := range tests {
+		mcount := len(n.machines)
+		// sanity check
+		m := n.FindMachine(name)
+		if m == nil {
+			t.Fatalf("machine %q not found", name)
+		}
+		if m.IsDefault() {
+			t.Fatalf("expected machine %q, got default instead", name)
+		}
+		n.RemoveMachine(name)
+
+		if len(n.machines) != mcount-1 {
+			t.Errorf("n.machines count expected %d, got %d", mcount-1, len(n.machines))
+		}
+
+		// make sure Machine is no longer returned by FindMachine()
+		if m2 := n.FindMachine(name); m2 != nil && !m2.IsDefault() {
+			t.Errorf("Machine %q not removed from Machines list", name)
+		}
+
+		// make sure tokens are not present in tokens list
+		for _, token := range []*token{m.nametoken, m.logintoken, m.passtoken, m.accounttoken} {
+			if token != nil {
+				for _, tok2 := range n.tokens {
+					if tok2 == token {
+						t.Errorf("token not removed from tokens list: %v", token)
+						break
+					}
+				}
+			}
+		}
+
+		bodyb, _ := n.MarshalText()
+		body := string(bodyb)
+		for _, value := range []string{m.Name, m.Login, m.Password, m.Account} {
+			if value != "" && strings.Contains(body, value) {
+				t.Errorf("MarshalText() after RemoveMachine() contained unexpected %q", value)
+			}
+		}
+	}
+}
+
 func TestUpdateLogin(t *testing.T) {
 	n, err := ParseFile("examples/good.netrc")
 	if err != nil {
