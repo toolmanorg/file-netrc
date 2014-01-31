@@ -151,15 +151,18 @@ func TestNetrcFindMachine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := n.FindMachine("ray")
-	if err != nil {
-		t.Fatal(err)
-	}
+	m := n.FindMachine("ray")
 	if !eqMachine(m, expectedMachines[1]) {
 		t.Errorf("bad machine; expected %v, got %v\n", expectedMachines[1], m)
 	}
 	if m.IsDefault() {
 		t.Errorf("expected def to be false")
+	}
+
+	n = &Netrc{}
+	m = n.FindMachine("nonexistent")
+	if m != nil {
+		t.Errorf("expected nil, got %v", m)
 	}
 }
 
@@ -347,10 +350,7 @@ func TestUpdateLogin(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		m, err := n.FindMachine(test.name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		m := n.FindMachine(test.name)
 		if m.IsDefault() == test.exists {
 			t.Errorf("expected machine %s to not exist, but it did", test.name)
 		} else {
@@ -362,10 +362,7 @@ func TestUpdateLogin(t *testing.T) {
 				continue
 			}
 			m.UpdateLogin(test.newlogin)
-			m, err := n.FindMachine(test.name)
-			if err != nil {
-				t.Fatal(err)
-			}
+			m := n.FindMachine(test.name)
 			if m.Login != test.newlogin {
 				t.Errorf("expected new login %q, got %q", test.newlogin, m.Login)
 			}
@@ -415,10 +412,7 @@ func TestUpdatePassword(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		m, err := n.FindMachine(test.name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		m := n.FindMachine(test.name)
 		if m.IsDefault() == test.exists {
 			t.Errorf("expected machine %s to not exist, but it did", test.name)
 		} else {
@@ -430,10 +424,7 @@ func TestUpdatePassword(t *testing.T) {
 				continue
 			}
 			m.UpdatePassword(test.newpassword)
-			m, err := n.FindMachine(test.name)
-			if err != nil {
-				t.Fatal(err)
-			}
+			m = n.FindMachine(test.name)
 			if m.Password != test.newpassword {
 				t.Errorf("expected new password %q, got %q", test.newpassword, m.Password)
 			}

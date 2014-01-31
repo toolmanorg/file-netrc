@@ -3,7 +3,6 @@ package netrc
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -46,23 +45,23 @@ type Netrc struct {
 
 // FindMachine returns the Machine in n named by name. If a machine named by
 // name exists, it is returned. If no Machine with name name is found and there
-// is a ``default'' machine, the ``default'' machine is returned . Otherwise, an
-// error is returned.
-func (n *Netrc) FindMachine(name string) (m *Machine, err error) {
+// is a ``default'' machine, the ``default'' machine is returned. Otherwise, nil
+// is returned.
+func (n *Netrc) FindMachine(name string) (m *Machine) {
 	// TODO(bgentry): not safe for concurrency
 	var def *Machine
 	for _, m = range n.machines {
 		if m.Name == name {
-			return m, nil
+			return m
 		}
 		if m.IsDefault() {
 			def = m
 		}
 	}
 	if def == nil {
-		return nil, errors.New("no machine found")
+		return nil
 	}
-	return def, nil
+	return def
 }
 
 // MarshalText implements the encoding.TextMarshaler interface to encode a
@@ -462,13 +461,14 @@ func Parse(r io.Reader) (*Netrc, error) {
 }
 
 // FindMachine parses the netrc file identified by filename and returns the
-// Machine named by name. If a machine named by name exists, it is returned. If
-// no Machine with name name is found and there is a ``default'' machine, the
-// ``default'' machine is returned. Otherwise, an error is returned.
+// Machine named by name. If a problem occurs parsing the file at filename, an
+// error is returned. If a machine named by name exists, it is returned. If no
+// Machine with name name is found and there is a ``default'' machine, the
+// ``default'' machine is returned. Otherwise, nil is returned.
 func FindMachine(filename, name string) (m *Machine, err error) {
 	n, err := ParseFile(filename)
 	if err != nil {
 		return nil, err
 	}
-	return n.FindMachine(name)
+	return n.FindMachine(name), nil
 }
