@@ -6,6 +6,7 @@ package netrc
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 var expectedMachines = []*Machine{
-	&Machine{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "gmail"},
+	&Machine{Name: "mail.google.com", Login: "joe@gmail.com", Password: "somethingSecret", Account: "justagmail"},
 	&Machine{Name: "ray", Login: "demo", Password: "mypassword", Account: ""},
 	&Machine{Name: "weirdlogin", Login: "uname", Password: "pass#pass", Account: ""},
 	&Machine{Name: "", Login: "anonymous", Password: "joe@example.com", Account: ""},
@@ -184,6 +185,18 @@ func TestMarshalText(t *testing.T) {
 	}
 	if string(result) != string(expected) {
 		t.Errorf("expected:\n%q\ngot:\n%q", string(expected), string(result))
+	}
+
+	// make sure tokens w/ no value are not serialized
+	m := n.FindMachine("mail.google.com")
+	m.UpdatePassword("")
+	result, err = n.MarshalText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(result), "\tpassword \n") {
+		fmt.Println(string(result))
+		t.Errorf("expected zero-value password token to not be serialzed")
 	}
 }
 

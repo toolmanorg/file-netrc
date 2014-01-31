@@ -69,9 +69,15 @@ func (n *Netrc) FindMachine(name string) (m *Machine) {
 func (n *Netrc) MarshalText() (text []byte, err error) {
 	// TODO(bgentry): not safe for concurrency
 	for i := range n.tokens {
-		text = append(text, n.tokens[i].rawkind...)
 		switch n.tokens[i].kind {
-		case tkMacdef:
+		case tkComment, tkDefault, tkWhitespace: // always append these types
+			text = append(text, n.tokens[i].rawkind...)
+		default:
+			if n.tokens[i].value != "" { // skip empty-value tokens
+				text = append(text, n.tokens[i].rawkind...)
+			}
+		}
+		if n.tokens[i].kind == tkMacdef {
 			text = append(text, ' ')
 			text = append(text, n.tokens[i].macroName...)
 		}
