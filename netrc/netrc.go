@@ -169,24 +169,21 @@ func (m *Machine) IsDefault() bool {
 }
 
 // UpdatePassword sets the password for the Machine m.
-func (m *Machine) UpdatePassword(newpass string) error {
+func (m *Machine) UpdatePassword(newpass string) {
 	m.Password = newpass
 	updateTokenValue(m.passtoken, newpass)
-	return nil
 }
 
 // UpdateLogin sets the login for the Machine m.
-func (m *Machine) UpdateLogin(newlogin string) error {
+func (m *Machine) UpdateLogin(newlogin string) {
 	m.Login = newlogin
 	updateTokenValue(m.logintoken, newlogin)
-	return nil
 }
 
 // UpdateAccount sets the login for the Machine m.
-func (m *Machine) UpdateAccount(newaccount string) error {
+func (m *Machine) UpdateAccount(newaccount string) {
 	m.Account = newaccount
 	updateTokenValue(m.accounttoken, newaccount)
-	return nil
 }
 
 func updateTokenValue(t *token, value string) {
