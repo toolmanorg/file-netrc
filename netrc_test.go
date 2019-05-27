@@ -557,3 +557,34 @@ func netrcReader(filename string, t *testing.T) io.Reader {
 	}
 	return bytes.NewReader(b)
 }
+
+func TestEqual(t *testing.T) {
+	n1, err := ParseFile("testdata/good.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n2, err := ParseFile("testdata/other.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n3, err := ParseFile("testdata/neq.netrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !n1.Equal(n2) {
+		t.Errorf("[pre removal] n1.Equal(n2) is false; wanted true")
+	}
+
+	n2.RemoveMachine("ray")
+
+	if n1.Equal(n2) {
+		t.Errorf("[post removal] n1.Equal(n2) is true; wanted false")
+	}
+
+	if n1.Equal(n3) {
+		t.Errorf("n1.Equal(n3) is true; wanted false")
+	}
+}
