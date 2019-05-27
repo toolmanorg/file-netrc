@@ -100,7 +100,7 @@ func TestNewToken(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
-	r := netrcReader("examples/good.netrc", t)
+	r := netrcReader("testdata/good.netrc", t)
 	n, err := Parse(r)
 	if err != nil {
 		t.Fatal(err)
@@ -109,20 +109,20 @@ func TestParse(t *testing.T) {
 }
 
 func TestParseFile(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
 	testExpected(n, t)
 
-	_, err = ParseFile("examples/bad_default_order.netrc")
+	_, err = ParseFile("testdata/bad_default_order.netrc")
 	if err == nil {
 		t.Error("expected an error parsing bad_default_order.netrc, got none")
 	} else if !err.(*Error).BadDefaultOrder() {
 		t.Error("expected BadDefaultOrder() to be true, got false")
 	}
 
-	_, err = ParseFile("examples/this_file_doesnt_exist.netrc")
+	_, err = ParseFile("testdata/this_file_doesnt_exist.netrc")
 	if err == nil {
 		t.Error("expected an error loading this_file_doesnt_exist.netrc, got none")
 	} else if _, ok := err.(*os.PathError); !ok {
@@ -131,7 +131,7 @@ func TestParseFile(t *testing.T) {
 }
 
 func TestFindMachine(t *testing.T) {
-	m, err := FindMachine("examples/good.netrc", "ray")
+	m, err := FindMachine("testdata/good.netrc", "ray")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestFindMachine(t *testing.T) {
 		t.Errorf("expected m.IsDefault() to be false")
 	}
 
-	m, err = FindMachine("examples/good.netrc", "non.existent")
+	m, err = FindMachine("testdata/good.netrc", "non.existent")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestFindMachine(t *testing.T) {
 }
 
 func TestNetrcFindMachine(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,12 +177,12 @@ func TestNetrcFindMachine(t *testing.T) {
 
 func TestMarshalText(t *testing.T) {
 	// load up expected netrc Marshal output
-	expected, err := ioutil.ReadAll(netrcReader("examples/good.netrc", t))
+	expected, err := ioutil.ReadAll(netrcReader("testdata/good.netrc", t))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ var newMachineTests = []struct {
 }
 
 func TestNewMachine(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func checkToken(t *testing.T, name string, tok *token, kind tkType, rawkind, val
 }
 
 func TestNewMachineGoesBeforeDefault(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestNewMachineGoesBeforeDefault(t *testing.T) {
 }
 
 func TestRemoveMachine(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestRemoveMachine(t *testing.T) {
 }
 
 func TestUpdateLogin(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestUpdateLogin(t *testing.T) {
 }
 
 func TestUpdatePassword(t *testing.T) {
-	n, err := ParseFile("examples/good.netrc")
+	n, err := ParseFile("testdata/good.netrc")
 	if err != nil {
 		t.Fatal(err)
 	}
